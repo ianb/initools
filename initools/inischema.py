@@ -409,7 +409,7 @@ class optconverter(opt):
     _converters = {}
     def get_converter(cls, name, converter_func):
         if cls._converters.has_key(id(converter_func)):
-            return cls._converters[(name, id(func))]
+            return cls._converters[(name, id(converter_func))]
         else:
             converter = cls(name, converter_func=converter_func)
             cls._converters[(name, id(converter_func))] = converter
