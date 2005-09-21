@@ -159,7 +159,7 @@ class Config(object):
             else:
                 raise ValueError(
                     "Yes/No value expected for %s (got %r)"
-                    % (key, vaule))
+                    % (key, value))
         else:
             return value
 
@@ -175,7 +175,7 @@ class Config(object):
         
     def getinlinelist(self, key, default=(), section=None):
         """
-        Get a list, where the list is defined like:
+        Get a list, where the list is defined like::
 
             foo = bar, baz
 
@@ -197,8 +197,8 @@ class Config(object):
 
     def getstartswith(self, startswith, section):
         """
-        Returns a list of [(key, value)] for all keys in the section that
-        start with startswith.
+        Returns a list of ``[(key, value), ...]`` for all keys in the
+        section that start with startswith.
         """
         result = []
         for key in self.keys(section=section):
