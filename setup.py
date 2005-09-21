@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
-version = '0.1'
+version = '0.2'
 
 setup(name='INITools',
       version=version,
-      description="",
+      description="Tools for parsing and using INI-style files",
       long_description="""\
 A set of tools for parsing and using ``.ini``-style files, including
 an abstract parser and several tools built on that parser.
