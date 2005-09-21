@@ -8,6 +8,10 @@ setup(name='INITools',
       long_description="""\
 A set of tools for parsing and using ``.ini``-style files, including
 an abstract parser and several tools built on that parser.
+
+
+Repository available at `http://svn.colorstudy.com/INITools/trunk
+<http://svn.colorstudy.com/INITools/trunk#egg=INITools>`_
 """,
       classifiers=[
         "Intended Audience :: Developers",
