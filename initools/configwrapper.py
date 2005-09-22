@@ -88,7 +88,7 @@ class Config(object):
                     %(section, self._key_order.keys()))
 
     def sections(self):
-        return self.raw_data.keys()
+        return self._section_order
 
     def getraw(self, key, section=None):
         """
