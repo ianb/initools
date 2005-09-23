@@ -55,12 +55,12 @@ class INIParser:
     def reset(self):
         pass
 
-    def load(self, filename, encoding='ascii'):
+    def load(self, filename, encoding=None):
         fileobj = open(filename, 'rb')
         self.loadfile(fileobj, filename=filename, encoding=encoding)
         fileobj.close()
 
-    def loadfile(self, fileobj, filename=None, encoding='ascii'):
+    def loadfile(self, fileobj, filename=None, encoding=None):
         self.start_lineno = 0
         if filename is None:
             filename = getattr(fileobj, 'name', None)
