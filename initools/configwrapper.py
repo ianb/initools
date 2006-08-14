@@ -1,3 +1,13 @@
+"""
+**Deprecated** (13 Aug 2006)
+"""
+
+# This was deprecated 13 Aug 2006
+import warnings
+warnings.warn('initools.configwrapper is not supported or recommended for use.',
+              DeprecationWarning)
+
+
 import os
 import iniparser
 

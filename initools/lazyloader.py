@@ -1,4 +1,6 @@
 """
+**Deprecated** (13 Aug 2006)
+
 A config file loader that can load and nest multiple config files, the
 config files can have structure, and the values can be tracked back to
 their original file and line number.
@@ -56,6 +58,11 @@ condition (e.g., the hostname matches my.host.com):
     '/path/to/root'
 
 """
+
+# This was deprecated 13 Aug 2006
+import warnings
+warnings.warn('initools.lazyloader is not supported or recommended for use.',
+              DeprecationWarning)
 
 from lazyiniparser import LazyINIParser, Item
 from nested import NestedDict
