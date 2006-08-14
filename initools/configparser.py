@@ -10,41 +10,60 @@ import os
 from UserDict import DictMixin
 from initools import iniparser
 
-class NoSectionError(Exception):
+class Error(Exception):
+    pass
+
+class NoSectionError(Error):
     """Exception raised when a specified section is not found."""
 
-class DuplicateSectionError(Exception):
+class DuplicateSectionError(Error):
     """Exception raised if add_section() is called with the name of a
     section that is already present."""
 
-class NoOptionError(Exception):
+class NoOptionError(Error):
     """Exception raised when a specified option is not found in the
     specified section."""
 
-class InterpolationError(Exception):
+class InterpolationError(Error):
     """Base class for exceptions raised when problems occur performing
     string interpolation."""
 
-class InterpolationDepthError(Exception):
+    def __init__(self, option, section, msg):
+        Error.__init__(self, msg)
+        self.option = option
+        self.section = section
+
+class InterpolationDepthError(InterpolationError):
     """Exception raised when string interpolation cannot be completed
     because the number of iterations exceeds
     MAX_INTERPOLATION_DEPTH. Subclass of InterpolationError."""
 
-class InterpolationMissingOptionError(Exception):
+class InterpolationMissingOptionError(InterpolationError):
     """Exception raised when an option referenced from a value does
     not exist. Subclass of InterpolationError."""
 
-class InterpolationSyntaxError(Exception):
+    def __init__(self, option, section, rawval, reference, msg=None):
+        if msg is None:
+            msg = ("Bad value substitution:\n"
+                   "\tsection: [%s]\n"
+                   "\toption : %s\n"
+                   "\tkey    : %s\n"
+                   "\trawval : %s\n"
+                   % (section, option, reference, rawval))
+        InterpolationError.__init__(self, option, section, msg)
+        self.reference = reference
+
+class InterpolationSyntaxError(InterpolationError):
     """Exception raised when the source text into which substitutions
     are made does not conform to the required syntax. Subclass of
     InterpolationError."""
 
-class MissingSectionHeaderError(Exception):
-    """Exception raised when attempting to parse a file which has no
-    section headers."""
-
 """Exception raised when errors occur attempting to parse a file."""
 ParsingError = iniparser.ParseError
+
+class MissingSectionHeaderError(ParsingError):
+    """Exception raised when attempting to parse a file which has no
+    section headers."""
 
 ## The maximum depth for recursive interpolation for get() when the
 ## raw parameter is false. This is relevant only for the ConfigParser
@@ -60,10 +79,11 @@ class RawConfigParser(object):
     safe_set = False
     global_section = False
     case_sensitive = False
+    section_case_sensitive = True
     encoding = 'utf8'
-    global_section = False
     inline_comments = True
     continuation_indent = '\t'
+    inherit_defaults = True
 
     def __init__(self, defaults=None,
                  encoding=NoDefault,
@@ -71,8 +91,10 @@ class RawConfigParser(object):
                  safe_set=NoDefault,
                  dollar_expand=NoDefault,
                  case_sensitive=NoDefault,
+                 section_case_sensitive=NoDefault,
                  global_section=NoDefault,
-                 inline_comments=NoDefault):
+                 inline_comments=NoDefault,
+                 inherit_defaults=NoDefault):
         if encoding is not NoDefault:
             self.encoding = encoding
         if percent_expand is not NoDefault:
@@ -83,10 +105,14 @@ class RawConfigParser(object):
             self.dollar_expand = dollar_expand
         if case_sensitive is not NoDefault:
             self.case_sensitive = case_sensitive
+        if section_case_sensitive is not NoDefault:
+            self.section_case_sensitive = section_case_sensitive
         if global_section is not NoDefault:
             self.global_section = global_section
         if inline_comments is not NoDefault:
             self.inline_comments = inline_comments
+        if inherit_defaults is not NoDefault:
+            self.inherit_defaults = inherit_defaults
         self._pre_normalized_keys = {}
         self._pre_normalized_sections = {}
         self._key_file_positions = {}
@@ -95,26 +121,22 @@ class RawConfigParser(object):
         self._section_key_order = {}
         self._section_comments = {}
         self._values = {}
+        self.add_section('DEFAULT')
         if defaults is not None:
-            self.add_section('DEFAULT')
             for name, value in defaults.items():
                 self.set('DEFAULT', name, value)
 
     def defaults(self):
         """Return a dictionary containing the instance-wide defaults."""
-        try:
-            return self.options('DEFAULT')
-        except NoSectionError:
-            return {}
+        default = self.sectionxform('DEFAULT')
+        return self._values.get(default, {})
 
     def sections(self):
         """Return a list of the sections available; DEFAULT is not
         included in the list."""
-        if 'DEFAULT' in self._section_order:
-            o = self._section_order[:]
-            o.remove('DEFAULT')
-            return o
-        return self._section_order
+        return [self._pre_normalized_sections[sec]
+                for sec in self._section_order
+                if sec != self.sectionxform('DEFAULT')]
 
     def add_section(self, section, comment=None):
         """Add a section named section to the instance.
@@ -122,8 +144,11 @@ class RawConfigParser(object):
         If a section by the given name already exists,
         DuplicateSectionError is raised.
         """
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         if sec in self._values:
+            if self.sectionxform('DEFAULT') == sec:
+                # Ignore this one case of duplicates
+                return
             raise DuplicateSectionError(
                 "A section [%s] already exists"
                 % sec)
@@ -142,21 +167,29 @@ class RawConfigParser(object):
         """
         if section == 'DEFAULT':
             return False
-        return self.optionxform(section) in self._values
+        return self.sectionxform(section) in self._values
 
     def options(self, section):
         """Returns a list of options available in the specified
         section."""
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         if sec not in self._values:
             raise NoSectionError(
                 "Section [%s] does not exist" % sec)
-        return self._section_key_order[sec]
+        v = [self._pre_normalized_keys[(sec, op)]
+             for op in self._section_key_order[sec]]
+        if self.inherit_defaults and self.sectionxform('DEFAULT') != sec:
+            v = v[:]
+            v.extend(self.options('DEFAULT'))
+        return v
 
     def has_option(self, section, option):
         """If the given section exists, and contains the given option,
         return True; otherwise return False."""
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
+        if self.inherit_defaults and self.sectionxform('DEFAULT') != sec:
+            if self.has_option('DEFAULT', option):
+                return True
         if sec not in self._values:
             return False
         return self.optionxform(option) in self._values[sec]
@@ -216,9 +249,10 @@ class RawConfigParser(object):
         interpolations are expanded, using the optional vars.  If raw
         is True, then no interpolation is done."""
         if _recursion > MAX_INTERPOLATION_DEPTH:
-            raise ValueError(
+            raise InterpolationDepthError(
+                section, option,
                 "Maximum recursion depth for interpolation exceded")
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         op = self.optionxform(option)
         if sec not in self._values:
             raise NoSectionError(
@@ -226,10 +260,16 @@ class RawConfigParser(object):
                 % (section, option))
         values = self._values[sec]
         if op not in values:
-            raise NoOptionError(
-                "Option %r not found (in section [%s])"
-                % (option, section))
-        value = values[op]
+            if (self.inherit_defaults
+                and self.sectionxform('DEFAULT') != sec
+                and self.has_option('DEFAULT', op)):
+                value = self.get('DEFAULT', op, raw=True)
+            else:
+                raise NoOptionError(
+                    "Option %r not found (in section [%s])"
+                    % (option, section))
+        else:
+            value = values[op]
         if raw:
             return value
         if self.percent_expand:
@@ -243,16 +283,22 @@ class RawConfigParser(object):
         if vars is None:
             vars = {}
         vars = _OptionWrapper(self, vars, section, option, _recursion)
+        if not isinstance(value, basestring):
+            raise TypeError(
+                "Cannot interpolate a non-string [%s] option %s=%r"
+                % (section, option, value))
         try:
             return value % vars
         except KeyError, e:
             var = e.args[0]
-            raise KeyError(
+            raise InterpolationMissingOptionError(
+                option, section, value, var,
                 "Variable %s not found in [%s] option %s=%s%s"
                 % (var, section, option, value,
                    self.get_location_info(section, option)))
         except ValueError, e:
-            raise ValueError(
+            raise InterpolationSyntaxError(
+                option, section,
                 "%s in [%s] option %s=%s%s"
                 % (e, section, option, value,
                    self.get_location_info(section, option)))
@@ -263,7 +309,7 @@ class RawConfigParser(object):
 
     def get_location_info(self, section, option):
         location = self._key_file_positions.get(
-            (self.optionxform(section), self.optionxform(option)),
+            (self.sectionxform(section), self.optionxform(option)),
             (None, None))
         if location[0]:
             extra = ' (located at %s' % location[0]
@@ -357,7 +403,7 @@ class RawConfigParser(object):
                 "You can only set options to string values "
                 "(you tried to set %s=%r in [%s])"
                 % (option, value, section))
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         if sec not in self._values:
             raise NoSectionError(
                 'There is no section [%s] (when setting option %r)'
@@ -417,7 +463,7 @@ class RawConfigParser(object):
         option existed to be removed, return True; otherwise return
         False.
         """
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         if sec not in self._values:
             raise NoSectionError(
                 'No section [%s] (while trying to remove %r)'
@@ -430,6 +476,7 @@ class RawConfigParser(object):
                 del self._key_comments[(sec, op)]
             if (sec, op) in self._key_file_positions:
                 del self._key_file_positions[(sec, op)]
+            self._section_key_order[sec].remove(op)
             return True
         else:
             return False
@@ -440,7 +487,7 @@ class RawConfigParser(object):
         If the section in fact existed, return True. Otherwise return
         False.
         """
-        sec = self.optionxform(section)
+        sec = self.sectionxform(section)
         if sec not in self._values:
             return False
         for key in self._pre_normalized_keys:
@@ -470,10 +517,27 @@ class RawConfigParser(object):
         behavior. Setting this to str(), for example, would make
         option names case sensitive.
         """
-        if self.case_sensitive:
+        if not self.case_sensitive:
             return option.lower()
         else:
             return option
+
+    def sectionxform(self, option):
+        """Transforms the section name option as found in an input file
+        or as passed in by client code to the form that should be used
+        in the internal structures.
+
+        The default implementation returns a lower-case version of
+        option; subclasses may override this or client code can set an
+        attribute of this name on instances to affect this
+        behavior. Setting this to str(), for example, would make
+        option names case sensitive.
+        """
+        if not self.section_case_sensitive:
+            return option.lower()
+        else:
+            return option
+        
 
 class ConfigParser(RawConfigParser):
 
@@ -488,8 +552,13 @@ class _ConfigParserParser(iniparser.INIParser):
     def __init__(self, cp):
         self.cp = cp
         self.last_comment = None
+        self.section = None
 
     def assignment(self, name, content):
+        if self.section is None and not self.cp.global_section:
+            self.parse_error("Missing Section",
+                             exception=MissingSectionHeaderError)
+        content = content.strip(' \t')
         if not name:
             self.parse_error('No name given for option')
         if self.cp.inline_comments:
@@ -525,8 +594,7 @@ class _ConfigParserParser(iniparser.INIParser):
         if not self.cp.has_section(section):
             self.cp.add_section(section, comment=self.last_comment)
             self.last_comment = None
-        if (not self.cp.global_section
-            and not section):
+        if not section:
             self.parse_error('Empty section name ([])')
         self.section = section
         
@@ -551,6 +619,8 @@ class _OptionWrapper(DictMixin):
         self._recursion = _recursion
 
     def __getitem__(self, item):
+        if item == '__name__':
+            return self.section
         item = self.parser.optionxform(item)
         if item in self.normal_extra_vars:
             return self.normal_extra_vars[item]

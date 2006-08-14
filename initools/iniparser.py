@@ -104,7 +104,7 @@ class INIParser(object):
                 line = line.decode(self.encoding)
             end_assignment = False
             if not line.strip(): # empty line
-                if last_name:
+                if last_name is not None:
                     self.process_assignment(
                         last_name,
                         accumulated_content)
@@ -118,7 +118,7 @@ class INIParser(object):
                     accumulated_content.append(line)
                 continue
             elif self.get_section(line) is not None: # section line
-                if last_name:
+                if last_name is not None:
                     self.process_assignment(
                         last_name,
                         accumulated_content)
@@ -126,7 +126,7 @@ class INIParser(object):
                     self.start_lineno = self.lineno
                 self.new_section(self.get_section(line))
             elif self.get_comment(line) is not None: # comment line
-                if last_name:
+                if last_name is not None:
                     self.process_assignment(
                         last_name,
                         accumulated_content)
@@ -134,13 +134,13 @@ class INIParser(object):
                     self.start_lineno = self.lineno
                 self.add_comment(self.get_comment(line))
             else: # normal assignment
-                if last_name:
+                if last_name is not None:
                     self.process_assignment(
                         last_name,
                         accumulated_content)
                 last_name, accumulated_content = self.split_name_value(line)
                 self.start_lineno = self.lineno
-        if last_name:
+        if last_name is not None:
             self.process_assignment(
                 last_name,
                 accumulated_content)
@@ -209,8 +209,10 @@ class INIParser(object):
         self.parse_error(
             'Empty section name ([])')
 
-    def parse_error(self, msg, line=None):
-        raise ParseError(
+    def parse_error(self, msg, line=None, exception=None):
+        if exception is None:
+            exception = ParseError
+        raise exception(
             msg,
             filename=self.filename,
             lineno=self.lineno,
