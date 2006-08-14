@@ -1,4 +1,6 @@
 """
+**Deprecated** (13 Aug 2006)
+
 Layers multiple dictionaries.
 
 Nested dictionaries can be traversed, with each dictionary shadowing
@@ -16,6 +18,11 @@ the previous dictionaries.  So for example:
 This works for deeply nested dictionaries, not just at the top level;
 each nested dictionary gets wrapped in a NestedDict as well.
 """
+
+# This was deprecated 13 Aug 2006
+import warnings
+warnings.warn('initools.nested is not supported or recommended for use.',
+              DeprecationWarning)
 
 from UserDict import DictMixin, UserDict
 

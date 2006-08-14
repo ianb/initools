@@ -1,4 +1,8 @@
 """
+**Probably will be deprecated** (13 Aug 2006): I'm not sure if this
+is worth keeping around.
+
+
 .ini file schemas
 
 You can define a schema for your .ini configuration files, which
