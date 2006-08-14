@@ -27,7 +27,7 @@ class ParseError(Exception):
             msg += ' at line %s' % self.lineno
         return msg
 
-class INIParser:
+class INIParser(object):
 
     """
     A parser for .ini-syntax files.
