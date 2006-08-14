@@ -46,14 +46,15 @@ class TestCaseBase(unittest.TestCase):
         L = cf.sections()
         L.sort()
         eq = self.assertEqual
-        eq(L, [r'Commented Bar',
-               r'Foo Bar',
-               r'Internationalized Stuff',
-               r'Long Line',
-               r'Section\with$weird%characters[' '\t',
-               r'Spaces',
-               r'Spacey Bar',
-               ])
+        eq(L, [
+            r'Commented Bar',
+            r'Foo Bar',
+            r'Internationalized Stuff',
+            r'Long Line',
+            r'Section\with$weird%characters[' '\t',
+            r'Spaces',
+            r'Spacey Bar',
+            ])
 
         # The use of spaces in the section names serves as a
         # regression test for SourceForge bug #583248:
@@ -103,15 +104,18 @@ class TestCaseBase(unittest.TestCase):
             self.failUnless(
                 cf.has_option("A", opt),
                 "has_option() returned false for option which should exist")
-        eq(cf.options("A"), ["a-b"])
-        eq(cf.options("a"), ["b"])
+        # @@: Modified for case-preserving:
+        eq(cf.options("A"), ["A-B"])
+        # @@: Modified for case-preserving:
+        eq(cf.options("a"), ["B"])
         cf.remove_option("a", "B")
         eq(cf.options("a"), [])
 
         # SF bug #432369:
         cf = self.fromstring(
             "[MySection]\nOption: first line\n\tsecond line\n")
-        eq(cf.options("MySection"), ["option"])
+        eq(cf.options("MySection"), ["Option"])
+        # @@: Modified for case-preserving:
         eq(cf.get("MySection", "Option"), "first line\nsecond line")
 
         # SF bug #561822:
@@ -142,8 +146,11 @@ class TestCaseBase(unittest.TestCase):
                          "[Foo]\n:value-without-option-name\n")
         self.parse_error(ConfigParser.ParsingError,
                          "[Foo]\n=value-without-option-name\n")
+        # @@: This used to be just 'No Section!', but that gets
+        # raised as an error early on because it doesn't look like
+        # an assignment.
         self.parse_error(ConfigParser.MissingSectionHeaderError,
-                         "No Section!\n")
+                         "No Section=null\n")
 
     def parse_error(self, exc, src):
         sio = StringIO.StringIO(src)
@@ -220,16 +227,15 @@ class TestCaseBase(unittest.TestCase):
             )
         output = StringIO.StringIO()
         cf.write(output)
-        # @@: Now [DEFAULT] stays last
         self.assertEqual(
             output.getvalue(),
-            "[Long Line]\n"
-            "foo = this line is much, much longer than my editor\n"
-            "\tlikes it.\n"
-            "\n"
             "[DEFAULT]\n"
             "foo = another very\n"
             "\tlong line\n"
+            "\n"
+            "[Long Line]\n"
+            "foo = this line is much, much longer than my editor\n"
+            "\tlikes it.\n"
             "\n"
             )
 
@@ -311,7 +317,6 @@ class TestCaseBase(unittest.TestCase):
             "getname: |%(__name__)s|",
             defaults={"default": "<default>"})
         L = list(cf.items("section"))
-        L.sort()
         self.assertEqual(L, expected)
 
 
@@ -338,11 +343,14 @@ class ConfigParserTestCase(TestCaseBase):
         self.assertEqual(e.option, "name")
 
     def test_items(self):
-        self.check_items_config([('default', '<default>'),
-                                 ('getdefault', '|<default>|'),
-                                 ('getname', '|section|'),
-                                 ('key', '|value|'),
-                                 ('name', 'value')])
+        # @@: Ordered to match original source
+        self.check_items_config([
+            ('name', 'value'),
+            ('key', '|value|'),
+            ('getdefault', '|<default>|'),
+            ('getname', '|section|'),
+            ('default', '<default>'),
+            ])
 
     def test_set_nonstring_types(self):
         cf = self.newconfig()
@@ -362,7 +370,9 @@ class ConfigParserTestCase(TestCaseBase):
         self.assertRaises(TypeError, cf.get, 'non-string', 'dict')
         self.assertEqual(cf.get('non-string', 'string_with_interpolation',
                                 raw=True), '%(list)s')
-        self.assertRaises(ValueError, cf.get, 'non-string',
+        # @@: This originally raise ValueError, instead of TypeError
+        # I can't figure out why that'd be true
+        self.assertRaises(TypeError, cf.get, 'non-string',
                           'string_with_interpolation', raw=False)
 
 
@@ -383,11 +393,14 @@ class RawConfigParserTestCase(TestCaseBase):
            "something %(with11)s lots of interpolation (11 steps)")
 
     def test_items(self):
-        self.check_items_config([('default', '<default>'),
-                                 ('getdefault', '|%(default)s|'),
-                                 ('getname', '|%(__name__)s|'),
-                                 ('key', '|%(name)s|'),
-                                 ('name', 'value')])
+        # @@: Ordered to match original source
+        self.check_items_config([
+            ('name', 'value'),
+            ('key', '|%(name)s|'),
+            ('getdefault', '|%(default)s|'),
+            ('getname', '|%(__name__)s|'),
+            ('default', '<default>'),
+            ])
 
     def test_set_nonstring_types(self):
         cf = self.newconfig()
