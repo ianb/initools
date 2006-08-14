@@ -8,6 +8,7 @@ additional enhancements.
 import codecs
 import os
 from UserDict import DictMixin
+import string
 from initools import iniparser
 
 class Error(Exception):
@@ -70,7 +71,7 @@ class MissingSectionHeaderError(ParsingError):
 ## class.
 MAX_INTERPOLATION_DEPTH = 10
 
-class NoDefault: pass
+class _NoDefault: pass
 
 class RawConfigParser(object):
 
@@ -86,32 +87,32 @@ class RawConfigParser(object):
     inherit_defaults = True
 
     def __init__(self, defaults=None,
-                 encoding=NoDefault,
-                 percent_expand=NoDefault,
-                 safe_set=NoDefault,
-                 dollar_expand=NoDefault,
-                 case_sensitive=NoDefault,
-                 section_case_sensitive=NoDefault,
-                 global_section=NoDefault,
-                 inline_comments=NoDefault,
-                 inherit_defaults=NoDefault):
-        if encoding is not NoDefault:
+                 encoding=_NoDefault,
+                 percent_expand=_NoDefault,
+                 safe_set=_NoDefault,
+                 dollar_expand=_NoDefault,
+                 case_sensitive=_NoDefault,
+                 section_case_sensitive=_NoDefault,
+                 global_section=_NoDefault,
+                 inline_comments=_NoDefault,
+                 inherit_defaults=_NoDefault):
+        if encoding is not _NoDefault:
             self.encoding = encoding
-        if percent_expand is not NoDefault:
+        if percent_expand is not _NoDefault:
             self.percent_expand = percent_expand
-        if safe_set is not NoDefault:
+        if safe_set is not _NoDefault:
             self.safe_set = safe_set
-        if dollar_expand is not NoDefault:
+        if dollar_expand is not _NoDefault:
             self.dollar_expand = dollar_expand
-        if case_sensitive is not NoDefault:
+        if case_sensitive is not _NoDefault:
             self.case_sensitive = case_sensitive
-        if section_case_sensitive is not NoDefault:
+        if section_case_sensitive is not _NoDefault:
             self.section_case_sensitive = section_case_sensitive
-        if global_section is not NoDefault:
+        if global_section is not _NoDefault:
             self.global_section = global_section
-        if inline_comments is not NoDefault:
+        if inline_comments is not _NoDefault:
             self.inline_comments = inline_comments
-        if inherit_defaults is not NoDefault:
+        if inherit_defaults is not _NoDefault:
             self.inherit_defaults = inherit_defaults
         self._pre_normalized_keys = {}
         self._pre_normalized_sections = {}
@@ -305,7 +306,29 @@ class RawConfigParser(object):
 
     def do_dollar_expansion(self, section, option, value,
                             vars, _recursion):
-        raise NotImplementedError
+        if vars is None:
+            vars = {}
+        vars = _SectionOptionWrapper(self, vars, section, option, _recursion)
+        if not isinstance(value, basestring):
+            raise TypeError(
+                "Cannot interpolate a non-string [%s] option %s=%r"
+                % (section, option, value))
+        try:
+            tmpl = string.Template(value)
+            return tmpl.substitute(vars)
+        except KeyError, e:
+            var = e.args[0]
+            raise InterpolationMissingOptionError(
+                option, section, value, var,
+                "Variable %s not found in [%s] option %s=%s%s"
+                % (var, section, option, value,
+                   self.get_location_info(section, option)))
+        except ValueError, e:
+            raise InterpolationSyntaxError(
+                option, section,
+                "%s in [%s] option %s=%s%s"
+                % (e, section, option, value,
+                   self.get_location_info(section, option)))
 
     def get_location_info(self, section, option):
         location = self._key_file_positions.get(
@@ -365,6 +388,27 @@ class RawConfigParser(object):
             "(use true/false)%s"
             % (option, value, section,
                self.get_location_info(section, option)))
+
+    def getfilename(self, section, option):
+        """Returns the value of the option, interpreted as a filename
+        relative to the location of where the option was defined.
+
+        Raises a ValueError if the option doesn't have an associated
+        filename and the path is not absolute.
+        """
+        value = self.get(section, option)
+        filename = self._key_file_positions.get(
+            (self.sectionxform(section), self.optionxform(option)),
+            (None, None))[0]
+        if filename is None:
+            if os.path.isabs(value):
+                return value
+            raise ValueError(
+                "Getting relative filename [%s] option %s=%s , but there "
+                "is no recorded config file for option"
+                % (section, option, value))
+        value = os.path.join(os.path.dirname(filename), value)
+        return value
 
     def items(self, section, raw=False, vars=None):
         """Return a list of (name, value) pairs for each option in the
@@ -632,3 +676,13 @@ class _OptionWrapper(DictMixin):
             return self.parser.defaults()[item]
         raise KeyError(item)
         
+class _SectionOptionWrapper(_OptionWrapper):
+
+    def __getitem__(self, item):
+        if ':' in item:
+            # Explicit section:
+            section, item = item.split(':', 1)
+            return self.parser.get(section, item, vars=self.extra_vars,
+                                   _recursion=self._recursion+1)
+        return _OptionWrapper.__getitem__(self, item)
+    
