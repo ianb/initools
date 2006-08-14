@@ -2,10 +2,13 @@
 This implements the public `ConfigParser` interface, but with some
 additional enhancements.
 
-These are:
-
 
 """
+
+import codecs
+import os
+from UserDict import DictMixin
+from initools import iniparser
 
 class NoSectionError(Exception):
     """Exception raised when a specified section is not found."""
@@ -40,49 +43,96 @@ class MissingSectionHeaderError(Exception):
     """Exception raised when attempting to parse a file which has no
     section headers."""
 
-class ParsingError(Exception):
-    """Exception raised when errors occur attempting to parse a file."""
+"""Exception raised when errors occur attempting to parse a file."""
+ParsingError = iniparser.ParseError
 
 ## The maximum depth for recursive interpolation for get() when the
 ## raw parameter is false. This is relevant only for the ConfigParser
 ## class.
 MAX_INTERPOLATION_DEPTH = 10
 
+class NoDefault: pass
+
 class RawConfigParser(object):
 
-    def __init__(self, encoding='utf8', percent_expand=False,
-                 safe_set=False, dollar_expand=False,
-                 case_sensitive=False):
-        self.encoding = encoding
-        self.percent_expand = percent_expand
-        self.safe_set = safe_set
-        self.dollar_expand = dollar_expand
-        self.case_sensitive = case_sensitive
+    percent_expand = False
+    dollar_expand = False
+    safe_set = False
+    global_section = False
+    case_sensitive = False
+    encoding = 'utf8'
+    global_section = False
+    inline_comments = True
+    continuation_indent = '\t'
+
+    def __init__(self, defaults=None,
+                 encoding=NoDefault,
+                 percent_expand=NoDefault,
+                 safe_set=NoDefault,
+                 dollar_expand=NoDefault,
+                 case_sensitive=NoDefault,
+                 global_section=NoDefault,
+                 inline_comments=NoDefault):
+        if encoding is not NoDefault:
+            self.encoding = encoding
+        if percent_expand is not NoDefault:
+            self.percent_expand = percent_expand
+        if safe_set is not NoDefault:
+            self.safe_set = safe_set
+        if dollar_expand is not NoDefault:
+            self.dollar_expand = dollar_expand
+        if case_sensitive is not NoDefault:
+            self.case_sensitive = case_sensitive
+        if global_section is not NoDefault:
+            self.global_section = global_section
+        if inline_comments is not NoDefault:
+            self.inline_comments = inline_comments
         self._pre_normalized_keys = {}
         self._pre_normalized_sections = {}
         self._key_file_positions = {}
         self._key_comments = {}
         self._section_order = []
         self._section_key_order = {}
+        self._section_comments = {}
         self._values = {}
-        self._percent_defaults = {}
+        if defaults is not None:
+            self.add_section('DEFAULT')
+            for name, value in defaults.items():
+                self.set('DEFAULT', name, value)
 
     def defaults(self):
         """Return a dictionary containing the instance-wide defaults."""
-        return self._defaults
+        try:
+            return self.options('DEFAULT')
+        except NoSectionError:
+            return {}
 
     def sections(self):
         """Return a list of the sections available; DEFAULT is not
         included in the list."""
-        raise NotImplemented
+        if 'DEFAULT' in self._section_order:
+            o = self._section_order[:]
+            o.remove('DEFAULT')
+            return o
+        return self._section_order
 
-    def add_section(self, section):
+    def add_section(self, section, comment=None):
         """Add a section named section to the instance.
 
         If a section by the given name already exists,
         DuplicateSectionError is raised.
         """
-        raise NotImplemented
+        sec = self.optionxform(section)
+        if sec in self._values:
+            raise DuplicateSectionError(
+                "A section [%s] already exists"
+                % sec)
+        self._pre_normalized_sections[sec] = section
+        if sec not in self._section_order:
+            self._section_order.append(sec)
+        self._section_key_order[sec] = []
+        self._section_comments[sec] = comment
+        self._values[sec] = {}
 
     def has_section(self, section):
         """Indicates whether the named section is present in the
@@ -90,17 +140,26 @@ class RawConfigParser(object):
 
         The DEFAULT section is not acknowledged.
         """
-        raise NotImplemented
+        if section == 'DEFAULT':
+            return False
+        return self.optionxform(section) in self._values
 
     def options(self, section):
         """Returns a list of options available in the specified
         section."""
-        raise NotImplemented
+        sec = self.optionxform(section)
+        if sec not in self._values:
+            raise NoSectionError(
+                "Section [%s] does not exist" % sec)
+        return self._section_key_order[sec]
 
     def has_option(self, section, option):
         """If the given section exists, and contains the given option,
         return True; otherwise return False."""
-        raise NotImplemented
+        sec = self.optionxform(section)
+        if sec not in self._values:
+            return False
+        return self.optionxform(option) in self._values[sec]
 
     def read(self, filenames):
         """Attempt to read and parse a list of filenames, returning a
@@ -124,7 +183,19 @@ class RawConfigParser(object):
           config.readfp(open('defaults.cfg'))
           config.read(['site.cfg', os.path.expanduser('~/.myapp.cfg')])
         """
-        raise NotImplemented
+        found = []
+        if isinstance(filenames, basestring):
+            filenames = [filenames]
+        for fn in filenames:
+            if not os.path.exists(fn):
+                continue
+            found.append(fn)
+            fp = open(fn)
+            try:
+                self.readfp(fp, fn)
+            finally:
+                fp.close()
+        return found
 
     def readfp(self, fp, filename='<???>'):
         """Read and parse configuration data from the file or
@@ -134,25 +205,98 @@ class RawConfigParser(object):
         fp has a name attribute, that is used for filename; the
         default is '<???>'.
         """
-        raise NotImplemented
+        parser = _ConfigParserParser(self)
+        parser.loadfile(fp, filename=filename,
+                        encoding=self.encoding)
 
-    def get(self, section, option, raw=False, vars=None):
+    def get(self, section, option, raw=False, vars=None, _recursion=0):
         """Get an option value for the named section.
 
         If self.percent_expand is true, then all the '%'
         interpolations are expanded, using the optional vars.  If raw
         is True, then no interpolation is done."""
-        raise NotImplemented
+        if _recursion > MAX_INTERPOLATION_DEPTH:
+            raise ValueError(
+                "Maximum recursion depth for interpolation exceded")
+        sec = self.optionxform(section)
+        op = self.optionxform(option)
+        if sec not in self._values:
+            raise NoSectionError(
+                "Section [%s] not found (when looking for option %r)"
+                % (section, option))
+        values = self._values[sec]
+        if op not in values:
+            raise NoOptionError(
+                "Option %r not found (in section [%s])"
+                % (option, section))
+        value = values[op]
+        if raw:
+            return value
+        if self.percent_expand:
+            value = self.do_percent_expansion(section, option, value, vars, _recursion)
+        if self.dollar_expand:
+            value = self.do_dollar_expansion(section, option, value, vars, _recursion)
+        return value
+
+    def do_percent_expansion(self, section, option, value,
+                             vars, _recursion):
+        if vars is None:
+            vars = {}
+        vars = _OptionWrapper(self, vars, section, option, _recursion)
+        try:
+            return value % vars
+        except KeyError, e:
+            var = e.args[0]
+            raise KeyError(
+                "Variable %s not found in [%s] option %s=%s%s"
+                % (var, section, option, value,
+                   self.get_location_info(section, option)))
+        except ValueError, e:
+            raise ValueError(
+                "%s in [%s] option %s=%s%s"
+                % (e, section, option, value,
+                   self.get_location_info(section, option)))
+
+    def do_dollar_expansion(self, section, option, value,
+                            vars, _recursion):
+        raise NotImplementedError
+
+    def get_location_info(self, section, option):
+        location = self._key_file_positions.get(
+            (self.optionxform(section), self.optionxform(option)),
+            (None, None))
+        if location[0]:
+            extra = ' (located at %s' % location[0]
+            if location[1]:
+                extra += ':%s' % location[1]
+            extra += ')'
+        else:
+            extra = ''
+        return extra
 
     def getint(self, section, option):
         """A convenience method which coerces the option in the
         specified section to an integer."""
-        raise NotImplemented
+        value = self.get(section, option)
+        try:
+            return int(value)
+        except ValueError:
+            loc_info = self.get_location_info(section, option)
+            raise ValueError(
+                "Could not convert option %s=%s (in [%s]) to an integer%s"
+                % (option, value, section, loc_info))
 
     def getfloat(self, section, option):
         """A convenience method which coerces the option in the
         specified section to a floating point number."""
-        raise NotImplemented
+        value = self.get(section, option)
+        try:
+            return float(value)
+        except ValueError:
+            raise ValueError(
+                "Could not convert options %s=%s (in [%s]) to a float%s"
+                % (option, value, section,
+                   self.get_location_info(section, option)))
 
     def getboolean(self, section, option):
         """A convenience method which coerces the option in the
@@ -164,7 +308,17 @@ class RawConfigParser(object):
         False. These string values are checked in a case-insensitive
         manner. Any other value will cause it to raise ValueError.
         """
-        raise NotImplemented
+        value = self.get(section, option)
+        value = value.strip().lower()
+        if value in ('1', 'y', 'yes', 't', 'true', 'on'):
+            return True
+        elif value in ('0', 'n', 'no', 'f', 'false', 'off'):
+            return False
+        raise ValueError(
+            "Could not convert option %s=%s (in [%s] to a boolean "
+            "(use true/false)%s"
+            % (option, value, section,
+               self.get_location_info(section, option)))
 
     def items(self, section, raw=False, vars=None):
         """Return a list of (name, value) pairs for each option in the
@@ -174,9 +328,19 @@ class RawConfigParser(object):
         interpolations are expanded, using the optional vars.  If raw
         is True, then no interpolation is done.
         """
-        raise NotImplemented
+        result = []
+        for op in self.options(section):
+            result.append((op, self.get(section, op, raw=raw, vars=vars)))
+        return result
+
+    def allitems(self, raw=False, vars=None):
+        result = {}
+        for section in self.sections():
+            result[section] = self.items(section, raw=raw, vars=vars)
+        return result
         
-    def set(self, section, option, value):
+    def set(self, section, option, value, filename=None,
+            line_number=None, comments=None):
         """If the given section exists, set the given option to the
         specified value; otherwise raise NoSectionError.
 
@@ -188,7 +352,32 @@ class RawConfigParser(object):
         If self.safe_set is true, then only string values will be
         allowed.
         """
-        raise NotImplemented
+        if not isinstance(value, basestring) and self.safe_set:
+            raise TypeError(
+                "You can only set options to string values "
+                "(you tried to set %s=%r in [%s])"
+                % (option, value, section))
+        sec = self.optionxform(section)
+        if sec not in self._values:
+            raise NoSectionError(
+                'There is no section [%s] (when setting option %r)'
+                % (sec, option))
+        op = self.optionxform(option)
+        self._pre_normalized_keys[(sec, op)] = option
+        if op in self._section_key_order[sec]:
+            self._section_key_order[sec].remove(op)
+        self._section_key_order[sec].append(op)
+        if comments is None:
+            if (sec, op) in self._key_comments:
+                del self._key_comments[(sec, op)]
+        else:
+            self._key_comments[(sec, op)] = value
+        if filename is None:
+            if (sec, op) in self._key_file_positions:
+                del self._key_file_positions[(sec, op)]
+        else:
+            self._key_file_positions[(sec, op)] = (filename, line_number)
+        self._values[sec][op] = value
 
     def write(self, fileobject):
         """Write a representation of the configuration to the
@@ -196,7 +385,30 @@ class RawConfigParser(object):
 
         This representation can be parsed by a future read() call.
         """
-        raise NotImplemented
+        f = fileobject
+        if self.encoding:
+            # @@: output encoding, errors?
+            f = codecs.EncodedFile(f, self.encoding)
+        for sec in self._section_order:
+            section = self._pre_normalized_sections[sec]
+            comment = self._section_comments.get(sec)
+            if comment:
+                f.write(comment+'\n')
+            f.write('[%s]\n' % section)
+            for op in self._section_key_order[sec]:
+                option = self._pre_normalized_keys[(sec, op)]
+                comment = self._key_comments.get((sec, op))
+                if comment:
+                    f.write(comment+'\n')
+                f.write('%s = ' % option)
+                lines = self._values[sec][op].splitlines()
+                f.write(lines[0])
+                for line in lines[1:]:
+                    f.write('\n%s%s' % (self.continuation_indent, line))
+                f.write('\n')
+                if comment:
+                    f.write('\n')
+            f.write('\n')
 
     def remove_option(self, section, option):
         """Remove the specified option from the specified section.
@@ -205,7 +417,22 @@ class RawConfigParser(object):
         option existed to be removed, return True; otherwise return
         False.
         """
-        raise NotImplemented
+        sec = self.optionxform(section)
+        if sec not in self._values:
+            raise NoSectionError(
+                'No section [%s] (while trying to remove %r)'
+                % (section, option))
+        op = self.optionxform(option)
+        if op in self._values[sec]:
+            del self._values[sec][op]
+            del self._pre_normalized_keys[(sec, op)]
+            if (sec, op) in self._key_comments:
+                del self._key_comments[(sec, op)]
+            if (sec, op) in self._key_file_positions:
+                del self._key_file_positions[(sec, op)]
+            return True
+        else:
+            return False
 
     def remove_section(self, section):
         """Remove the specified section from the configuration.
@@ -213,7 +440,24 @@ class RawConfigParser(object):
         If the section in fact existed, return True. Otherwise return
         False.
         """
-        raise NotImplemented
+        sec = self.optionxform(section)
+        if sec not in self._values:
+            return False
+        for key in self._pre_normalized_keys:
+            if key[0] == sec:
+                del self._pre_normalized_keys[key]
+        del self._pre_normalized_sections[sec]
+        for key in self._key_file_positions:
+            if key[0] == sec:
+                del self._key_file_positions[key]
+        for key in self._key_comments:
+            if key[0] == sec:
+                del self._key_comments[key]
+        self._section_order.remove(sec)
+        del self._section_key_order[sec]
+        if sec in self._section_comments:
+            del self._section_comments[sec]
+        del self._values[sec]
 
     def optionxform(self, option):
         """Transforms the option name option as found in an input file
@@ -230,3 +474,91 @@ class RawConfigParser(object):
             return option.lower()
         else:
             return option
+
+class ConfigParser(RawConfigParser):
+
+    percent_expand = True
+
+class SafeConfigParser(ConfigParser):
+
+    safe_set = True
+
+class _ConfigParserParser(iniparser.INIParser):
+
+    def __init__(self, cp):
+        self.cp = cp
+        self.last_comment = None
+
+    def assignment(self, name, content):
+        if not name:
+            self.parse_error('No name given for option')
+        if self.cp.inline_comments:
+            lines = content.splitlines()
+            result = []
+            for line in lines:
+                semi_pos = line.find(';')
+                hash_pos = line.find('#')
+                if semi_pos == -1 and hash_pos == -1:
+                    comment = None
+                elif semi_pos == -1:
+                    line, comment = line.split('#', 1)
+                elif hash_pos == -1:
+                    line, comment = line.split(';', 1)
+                elif hash_pos < semi_pos:
+                    line, comment = line.split('#', 1)
+                else:
+                    line, comment = line.split(';', 1)
+                if comment is not None:
+                    line = line.rstrip()
+                    comment = comment.lstrip()
+                    self.add_comment(comment)
+                result.append(line)
+            content = '\n'.join(result)
+        self.cp.set(
+            self.section, name, content,
+            filename=self.filename,
+            line_number=self.lineno,
+            comments=self.last_comment)
+        self.last_comment = None
+
+    def new_section(self, section):
+        if not self.cp.has_section(section):
+            self.cp.add_section(section, comment=self.last_comment)
+            self.last_comment = None
+        if (not self.cp.global_section
+            and not section):
+            self.parse_error('Empty section name ([])')
+        self.section = section
+        
+    def add_comment(self, comment):
+        if self.last_comment is None:
+            self.last_comment = comment
+        else:
+            self.last_comment = self.last_comment + '\n' + comment
+
+
+class _OptionWrapper(DictMixin):
+
+    def __init__(self, parser, extra_vars, section, option,
+                 _recursion):
+        self.parser = parser
+        self.extra_vars = extra_vars
+        self.normal_extra_vars = {}
+        for name, value in extra_vars.iteritems():
+            self.normal_extra_vars[parser.optionxform(name)] = value
+        self.section = section
+        self.option = option
+        self._recursion = _recursion
+
+    def __getitem__(self, item):
+        item = self.parser.optionxform(item)
+        if item in self.normal_extra_vars:
+            return self.normal_extra_vars[item]
+        if self.parser.has_option(self.section, item):
+            return self.parser.get(self.section, item,
+                                   vars=self.extra_vars,
+                                   _recursion=self._recursion+1)
+        if item in self.parser.defaults():
+            return self.parser.defaults()[item]
+        raise KeyError(item)
+        
