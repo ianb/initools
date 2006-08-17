@@ -75,18 +75,48 @@ class _NoDefault: pass
 
 class RawConfigParser(object):
 
+    # If this is true then %(DEFAULT_KEY)s will be substituted
+    # in values:
     percent_expand = False
+    # If this is true then ${section:value} will be substituted
+    # in values:
     dollar_expand = False
+    # If this is true, then .set(section_that_does_not_exist, ...)
+    # will fail; otherwise the section will be implicitly created
     safe_set = False
+    # If this is true then a global section is allowed (options
+    # defined before any section is defined)
     global_section = False
+    # If this is true, then option names are case sensitive:
     case_sensitive = False
+    # If this is true, then section names are case sensitive:
     section_case_sensitive = True
+    # This is the encoding to expect the file to be in:
     encoding = 'utf8'
+    # If true, then comments will be allowed on the same line
+    # as a value.  Otherwise comments can only be on their
+    # own lines
     inline_comments = True
+    # When writing a config file out, this will be used to
+    # indent continuation lines:
     continuation_indent = '\t'
+    # If this is true, then every section will appear to have
+    # the values from [DEFAULT] in it
     inherit_defaults = True
-    default_extend_name = 'extends'
+    # This can be True or a string to indicate the name of the
+    # config option for extending a section or config file.
     extendable = False
+    # If extendable is True, then this value will be used:
+    default_extend_name = 'extends'
+    # An extends in these sections will be applied globally;
+    # in other sections they will only apply to the section
+    # itself
+    global_extend_section_names = ['', 'global', 'DEFAULT']
+    # If a extend is in a section, it will draw from some section;
+    # if there is no default section then it will draw from this
+    # section.  Use '__name__' to indicate the same name as the
+    # section itself.
+    default_extend_section_name = 'main'
 
     def __init__(self, defaults=None,
                  encoding=_NoDefault,
@@ -205,7 +235,7 @@ class RawConfigParser(object):
             return False
         return self.optionxform(option) in self._values[sec]
 
-    def read(self, filenames, extending=False):
+    def read(self, filenames, extending=False, map_sections=None):
         """Attempt to read and parse a list of filenames, returning a
         list of filenames which were successfully parsed.
 
@@ -241,12 +271,14 @@ class RawConfigParser(object):
             found.append(fn)
             fp = open(fn)
             try:
-                self.readfp(fp, fn, extending=extending)
+                self.readfp(fp, fn, extending=extending,
+                            map_sections=map_sections)
             finally:
                 fp.close()
         return found
 
-    def readfp(self, fp, filename='<???>', extending=False):
+    def readfp(self, fp, filename='<???>', extending=False,
+               map_sections=None):
         """Read and parse configuration data from the file or
         file-like object in fp
 
@@ -254,9 +286,39 @@ class RawConfigParser(object):
         fp has a name attribute, that is used for filename; the
         default is '<???>'.
         """
-        parser = _ConfigParserParser(self)
+        parser = _ConfigParserParser(self, extending=extending,
+                                     map_sections=map_sections)
         parser.loadfile(fp, filename=filename,
-                        encoding=self.encoding, extending=extending)
+                        encoding=self.encoding)
+        if self.extendable:
+            self._process_extends()
+
+    def _process_extends(self):
+        """
+        Figure out if there's any extends options in the config
+        file, and if so then process those options and remove them.
+        """
+        extend = self.optionxform(self._extends_name)
+        glob_sections = map(
+            self.sectionxform, self.global_extend_section_names)
+        reads = []
+        for section, values in self._values.iteritems():
+            if extend in values:
+                value = self.getfilename(section, extend)
+                if self.sectionxform(section) in glob_sections:
+                    reads.append((value, None))
+                else:
+                    if '#' in value:
+                        value, inc_section = value.split('#', 1)
+                    else:
+                        inc_section = self.default_extend_section_name
+                    if inc_section == '__name__':
+                        inc_section = section
+                    reads.append((value, {inc_section: section}))
+                self.remove_option(section, extend)
+        for filename, map_sections in reads:
+            self.read(filename, extending=True,
+                      map_sections=map_sections)
 
     def get(self, section, option, raw=False, vars=None, _recursion=0):
         """Get an option value for the named section.
@@ -289,13 +351,15 @@ class RawConfigParser(object):
         if raw:
             return value
         if self.percent_expand:
-            value = self.do_percent_expansion(section, option, value, vars, _recursion)
+            value = self._do_percent_expansion(
+                section, option, value, vars, _recursion)
         if self.dollar_expand:
-            value = self.do_dollar_expansion(section, option, value, vars, _recursion)
+            value = self._do_dollar_expansion(
+                section, option, value, vars, _recursion)
         return value
 
-    def do_percent_expansion(self, section, option, value,
-                             vars, _recursion):
+    def _do_percent_expansion(self, section, option, value,
+                              vars, _recursion):
         if vars is None:
             vars = {}
         vars = _OptionWrapper(self, vars, section, option, _recursion)
@@ -311,16 +375,16 @@ class RawConfigParser(object):
                 option, section, value, var,
                 "Variable %s not found in [%s] option %s=%s%s"
                 % (var, section, option, value,
-                   self.get_location_info(section, option)))
+                   self._get_location_info(section, option)))
         except ValueError, e:
             raise InterpolationSyntaxError(
                 option, section,
                 "%s in [%s] option %s=%s%s"
                 % (e, section, option, value,
-                   self.get_location_info(section, option)))
+                   self._get_location_info(section, option)))
 
-    def do_dollar_expansion(self, section, option, value,
-                            vars, _recursion):
+    def _do_dollar_expansion(self, section, option, value,
+                             vars, _recursion):
         if vars is None:
             vars = {}
         vars = _SectionOptionWrapper(self, vars, section, option, _recursion)
@@ -337,15 +401,15 @@ class RawConfigParser(object):
                 option, section, value, var,
                 "Variable %s not found in [%s] option %s=%s%s"
                 % (var, section, option, value,
-                   self.get_location_info(section, option)))
+                   self._get_location_info(section, option)))
         except ValueError, e:
             raise InterpolationSyntaxError(
                 option, section,
                 "%s in [%s] option %s=%s%s"
                 % (e, section, option, value,
-                   self.get_location_info(section, option)))
+                   self._get_location_info(section, option)))
 
-    def get_location_info(self, section, option):
+    def _get_location_info(self, section, option):
         location = self._key_file_positions.get(
             (self.sectionxform(section), self.optionxform(option)),
             (None, None))
@@ -365,7 +429,7 @@ class RawConfigParser(object):
         try:
             return int(value)
         except ValueError:
-            loc_info = self.get_location_info(section, option)
+            loc_info = self._get_location_info(section, option)
             raise ValueError(
                 "Could not convert option %s=%s (in [%s]) to an integer%s"
                 % (option, value, section, loc_info))
@@ -380,7 +444,7 @@ class RawConfigParser(object):
             raise ValueError(
                 "Could not convert options %s=%s (in [%s]) to a float%s"
                 % (option, value, section,
-                   self.get_location_info(section, option)))
+                   self._get_location_info(section, option)))
 
     def getboolean(self, section, option):
         """A convenience method which coerces the option in the
@@ -402,7 +466,7 @@ class RawConfigParser(object):
             "Could not convert option %s=%s (in [%s] to a boolean "
             "(use true/false)%s"
             % (option, value, section,
-               self.get_location_info(section, option)))
+               self._get_location_info(section, option)))
 
     def getfilename(self, section, option):
         """Returns the value of the option, interpreted as a filename
@@ -607,9 +671,14 @@ class SafeConfigParser(ConfigParser):
     safe_set = True
 
 class _ConfigParserParser(iniparser.INIParser):
+    """
+    This parser feeds the parsed values into a ConfigParser object
+    """
 
-    def __init__(self, cp):
+    def __init__(self, cp, extending, map_sections=None):
         self.cp = cp
+        self.extending = extending
+        self.map_sections = map_sections
         self.last_comment = None
         self.section = None
 
@@ -642,8 +711,19 @@ class _ConfigParserParser(iniparser.INIParser):
                     self.add_comment(comment)
                 result.append(line)
             content = '\n'.join(result)
+        if self.extending:
+            if self.cp.has_option(self.section, name):
+                # Don't write over options
+                return
+        if self.map_sections is not None:
+            if self.section in self.map_sections:
+                section = self.map_sections[self.section]
+            else:
+                return
+        else:
+            section = self.section
         self.cp.set(
-            self.section, name, content,
+            section, name, content,
             filename=self.filename,
             line_number=self.lineno,
             comments=self.last_comment)
@@ -665,6 +745,13 @@ class _ConfigParserParser(iniparser.INIParser):
 
 
 class _OptionWrapper(DictMixin):
+
+    """
+    This produces the dictionary used for percent substitution in
+    values.
+
+    Substitution is recursive.
+    """
 
     def __init__(self, parser, extra_vars, section, option,
                  _recursion):
@@ -692,6 +779,11 @@ class _OptionWrapper(DictMixin):
         raise KeyError(item)
         
 class _SectionOptionWrapper(_OptionWrapper):
+    """
+    This provides the dict wrapper for dollar substitution.  Unlike
+    percent substitution, you can reference values from arbitrary
+    sections.
+    """
 
     def __getitem__(self, item):
         if ':' in item:
