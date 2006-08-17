@@ -85,6 +85,8 @@ class RawConfigParser(object):
     inline_comments = True
     continuation_indent = '\t'
     inherit_defaults = True
+    default_extend_name = 'extends'
+    extendable = False
 
     def __init__(self, defaults=None,
                  encoding=_NoDefault,
@@ -95,7 +97,8 @@ class RawConfigParser(object):
                  section_case_sensitive=_NoDefault,
                  global_section=_NoDefault,
                  inline_comments=_NoDefault,
-                 inherit_defaults=_NoDefault):
+                 inherit_defaults=_NoDefault,
+                 extendable=_NoDefault):
         if encoding is not _NoDefault:
             self.encoding = encoding
         if percent_expand is not _NoDefault:
@@ -114,6 +117,13 @@ class RawConfigParser(object):
             self.inline_comments = inline_comments
         if inherit_defaults is not _NoDefault:
             self.inherit_defaults = inherit_defaults
+        if extendable is not _NoDefault:
+            self.extendable = extendable
+        if self.extendable:
+            if isinstance(self.extendable, basestring):
+                self._extends_name = self.extendable
+            else:
+                self._extends_name = self.default_extend_name
         self._pre_normalized_keys = {}
         self._pre_normalized_sections = {}
         self._key_file_positions = {}
@@ -195,7 +205,7 @@ class RawConfigParser(object):
             return False
         return self.optionxform(option) in self._values[sec]
 
-    def read(self, filenames):
+    def read(self, filenames, extending=False):
         """Attempt to read and parse a list of filenames, returning a
         list of filenames which were successfully parsed.
 
@@ -216,6 +226,11 @@ class RawConfigParser(object):
           config = ConfigParser.ConfigParser()
           config.readfp(open('defaults.cfg'))
           config.read(['site.cfg', os.path.expanduser('~/.myapp.cfg')])
+
+        If ``extending`` is true (default false) then the values
+        picked up from the file will *not* override the values already
+        present (that means that the file being loaded is extended by
+        the already loaded file).
         """
         found = []
         if isinstance(filenames, basestring):
@@ -226,12 +241,12 @@ class RawConfigParser(object):
             found.append(fn)
             fp = open(fn)
             try:
-                self.readfp(fp, fn)
+                self.readfp(fp, fn, extending=extending)
             finally:
                 fp.close()
         return found
 
-    def readfp(self, fp, filename='<???>'):
+    def readfp(self, fp, filename='<???>', extending=False):
         """Read and parse configuration data from the file or
         file-like object in fp
 
@@ -241,7 +256,7 @@ class RawConfigParser(object):
         """
         parser = _ConfigParserParser(self)
         parser.loadfile(fp, filename=filename,
-                        encoding=self.encoding)
+                        encoding=self.encoding, extending=extending)
 
     def get(self, section, option, raw=False, vars=None, _recursion=0):
         """Get an option value for the named section.
