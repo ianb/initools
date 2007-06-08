@@ -27,6 +27,13 @@ A whirlwind tour of the modules:
     is parsed.  See ``initools.iniparser.BasicParser`` for a minimal
     example.
 
+``configparser``:
+    A module compatible with the `standard library
+    <http://python.org/doc/current/lib/module-ConfigParser.html>`__
+    ``ConfigParser`` module -- it doesn't actually share any code with
+    that module, but supports all the same thing plus some other
+    (optional but disabled) features.
+
 ``configwrapper``:
     This offers a simple ``Config`` object that takes a single
     filename as an argument, and provides a simple interface to that
