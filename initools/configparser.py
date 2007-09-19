@@ -660,7 +660,12 @@ class RawConfigParser(object):
             return option.lower()
         else:
             return option
-        
+
+    def asdict(self):
+        return self._values.copy()
+
+    def sectiondict(self, section):
+        return self._values.get(self.sectionxform(section), {}).copy()
 
 class ConfigParser(RawConfigParser):
 
