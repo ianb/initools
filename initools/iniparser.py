@@ -33,6 +33,7 @@ class INIParser(object):
     A parser for .ini-syntax files.
 
     Implements all features I know of in .ini files:
+
     * sections with a [ in the first column
     * assignment via a=b or a: b
     * rfc822-style continuation lines (i.e., start the next line
