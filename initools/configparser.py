@@ -71,7 +71,10 @@ class MissingSectionHeaderError(ParsingError):
 ## class.
 MAX_INTERPOLATION_DEPTH = 10
 
-class _NoDefault: pass
+class _NoDefault:
+    def __repr__(self):
+        return '(no default)'
+_NoDefault = _NoDefault()
 
 class RawConfigParser(object):
 
