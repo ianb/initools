@@ -574,6 +574,8 @@ class RawConfigParser(object):
                     f.write(comment+'\n')
                 f.write('%s = ' % option)
                 lines = self._values[sec][op].splitlines()
+                if not lines:
+                    lines = ['']
                 f.write(lines[0])
                 for line in lines[1:]:
                     f.write('\n%s%s' % (self.continuation_indent, line))
