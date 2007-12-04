@@ -120,6 +120,9 @@ class RawConfigParser(object):
     # section.  Use '__name__' to indicate the same name as the
     # section itself.
     default_extend_section_name = 'main'
+    # If this is false, then if you do conf.read([filename]) and the
+    # filename doesn't exist, an exception (IOError) will be raised.
+    ignore_missing_files = True
 
     def __init__(self, defaults=None,
                  encoding=_NoDefault,
@@ -269,16 +272,26 @@ class RawConfigParser(object):
         if isinstance(filenames, basestring):
             filenames = [filenames]
         for fn in filenames:
-            if not os.path.exists(fn):
+            try:
+                fp = self._open(fn)
+            except IOError, e:
+                if not self.ignore_missing_files:
+                    raise
                 continue
             found.append(fn)
-            fp = open(fn)
             try:
                 self.readfp(fp, fn, extending=extending,
                             map_sections=map_sections)
             finally:
                 fp.close()
         return found
+
+    def _open(self, filename, mode='r'):
+        """
+        Open a file.  You can override this in a subclass to, for
+        example, allow loading configs over HTTP.
+        """
+        return open(filename, mode)
 
     def readfp(self, fp, filename='<???>', extending=False,
                map_sections=None):
