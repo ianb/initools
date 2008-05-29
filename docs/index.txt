@@ -71,11 +71,6 @@ A whirlwind tour of the modules:
     This is complex enough that it becomes necessary to debug your
     configuration files, which sucks.
 
-Documentation
--------------
-
-See the `pudge generated documentation <module-index.html>`_.
-
 Future
 ------
 
