@@ -5,10 +5,10 @@ from initools import configparser as ConfigParser
 import StringIO
 import unittest
 
-from test import test_support
+#from test import test_support
 
 
-class TestCaseBase(unittest.TestCase):
+class BaseCase(unittest.TestCase):
     def newconfig(self, defaults=None):
         if defaults is None:
             self.cf = self.config_class()
@@ -16,10 +16,10 @@ class TestCaseBase(unittest.TestCase):
             self.cf = self.config_class(defaults)
         return self.cf
 
-    def fromstring(self, string, defaults=None):
+    def fromstring(self, string, defaults=None, filename=None):
         cf = self.newconfig(defaults)
         sio = StringIO.StringIO(string)
-        cf.readfp(sio)
+        cf.readfp(sio, filename=filename)
         return cf
 
     def test_basic(self):
@@ -239,6 +239,28 @@ class TestCaseBase(unittest.TestCase):
             "\n"
             )
 
+    def test_write_sources(self):
+        cf = self.fromstring(
+            "[main]\n"
+            "setting1 = foo\n"
+            "setting2 = bar\n",
+            filename="file1.ini")
+        cf.set('main', 'setting2', 'BAR', filename='file2.ini')
+        cf.set('main', 'setting3', 'XYZ', filename='file3.ini')
+        output = StringIO.StringIO()
+        cf.write_sources(output, ['file1.ini'])
+        self.assertEqual(
+            output.getvalue(),
+            "[main]\n"
+            "setting1 = foo\n\n")
+        output = StringIO.StringIO()
+        cf.write_sources(output, ['file1.ini', 'file2.ini'])
+        self.assertEqual(
+            output.getvalue(),
+            "[main]\n"
+            "setting1 = foo\n"
+            "setting2 = BAR\n\n")
+
     def test_set_string_types(self):
         cf = self.fromstring("[sect]\n"
                              "option1=foo\n")
@@ -259,7 +281,7 @@ class TestCaseBase(unittest.TestCase):
             cf.set("sect", "option2", unicode("splat"))
 
     def test_read_returns_file_list(self):
-        file1 = test_support.findfile("cfgparser.1")
+        file1 = os.path.join(os.path.dirname(__file__), 'cfgparser.1')
         # check when we pass a mix of readable and non-readable files:
         cf = self.newconfig()
         parsed_files = cf.read([file1, "nonexistant-file"])
@@ -320,7 +342,7 @@ class TestCaseBase(unittest.TestCase):
         self.assertEqual(L, expected)
 
 
-class ConfigParserTestCase(TestCaseBase):
+class ConfigParserTestCase(BaseCase):
     config_class = ConfigParser.ConfigParser
 
     def test_interpolation(self):
@@ -376,7 +398,7 @@ class ConfigParserTestCase(TestCaseBase):
                           'string_with_interpolation', raw=False)
 
 
-class RawConfigParserTestCase(TestCaseBase):
+class RawConfigParserTestCase(BaseCase):
     config_class = ConfigParser.RawConfigParser
 
     def test_interpolation(self):
@@ -448,4 +470,8 @@ def test_main():
     )
 
 if __name__ == "__main__":
-    test_main()
+    import unittest
+    # To keep it from being tested
+    del BaseCase
+    unittest.main()
+    #test_main()
