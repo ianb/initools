@@ -10,6 +10,7 @@ import os
 from UserDict import DictMixin
 import string
 from initools import iniparser
+from initools._setmixin import SetMixin
 
 class Error(Exception):
     pass
@@ -570,17 +571,49 @@ class RawConfigParser(object):
 
         This representation can be parsed by a future read() call.
         """
+        self.write_sources(fileobject, None)
+
+    def write_sources(self, fileobject, sources):
+        """Write a representation of the configuration, but filtered
+        to only include configuration that came from `sources`.
+
+        `sources` should be a set-like object (support ``in``) and
+        any setting that came from a source included in this set will
+        be written out.  Note that None is a valid source, and typical
+        for settings written with ``parser.set(section, option, value)``.
+
+        If `sources` is None, that means include settings from all
+        sources.
+
+        Note that you should be careful about non-canonical filenames.
+        For instance, if a file was loaded with a relative filename,
+        then you give a set that includes the same filename but in an
+        absolute form, this function will not recognize them as the
+        same.
+        """
         f = fileobject
         if self.encoding:
             # @@: output encoding, errors?
             f = codecs.EncodedFile(f, self.encoding)
         for sec in self._section_order:
             section = self._pre_normalized_sections[sec]
+            ops = self._section_key_order[sec]
+            selected_ops = []
+            for op in ops:
+                location = self._key_file_positions.get(
+                    (self.sectionxform(sec), self.optionxform(op)),
+                    (None, None))
+                if (sources is None
+                    or location[0] in sources):
+                    selected_ops.append(op)
+            if not selected_ops and sources is not None:
+                # Nothing in the section (at least for this file)
+                continue
             comment = self._section_comments.get(sec)
             if comment:
                 f.write(comment+'\n')
             f.write('[%s]\n' % section)
-            for op in self._section_key_order[sec]:
+            for op in selected_ops:
                 option = self._pre_normalized_keys[(sec, op)]
                 comment = self._key_comments.get((sec, op))
                 if comment:
@@ -816,3 +849,41 @@ class _SectionOptionWrapper(_OptionWrapper):
                                    _recursion=self._recursion+1)
         return _OptionWrapper.__getitem__(self, item)
     
+class CanonicalFilenameSet(object):
+    """
+    This wrapper for a set will make sure that canonical filenames are
+    used when checking for containment.
+
+    That is, if you test ``'foo/bar' in
+    CanonicalFilenameSet(['/home/user/foo/bar'])`` if the current
+    working directory is ``'/home/usr/'`` then this would return True.
+
+    This makes a filename canonical using os.path.abspath and
+    os.path.normcase.
+    """
+
+    def __init__(self, s=None):
+        self.set = set()
+        if s is not None:
+            for item in s:
+                self.add(item)
+
+    def canonical(self, item):
+        if not isinstance(item, basestring):
+            return item
+        return os.path.normcase(os.path.abspath(item))
+
+    def __repr__(self):
+        return 'CanonicalFilenameSet(%r)' % list(self.set)
+
+    def __contains__(self, other):
+        return self.canonical(other) in self.set
+
+    def __iter__(self):
+        return iter(self.set)
+
+    def add(self, item):
+        self.set.add(self.canonical(item))
+
+    def remove(self, item):
+        self.set.remove(self.canonical(item))

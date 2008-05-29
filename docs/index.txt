@@ -94,3 +94,9 @@ svn trunk
 
 * Added an ``_open`` method on ConfigParser that can be overridden to,
   for example, support HTTP urls.
+
+* Added ``initools.ConfigParser.write_sources(fileobj, sources)``,
+  which writes all the settings in one of the sources in the set
+  ``sources``.  Also ``initools.ConfigParser.CanonicalFilenameSet``
+  which is a set-like object that accepts relative and absolute (or
+  case-different files on Windows) as the same.
