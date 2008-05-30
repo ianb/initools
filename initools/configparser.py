@@ -427,9 +427,7 @@ class RawConfigParser(object):
                    self._get_location_info(section, option)))
 
     def _get_location_info(self, section, option):
-        location = self._key_file_positions.get(
-            (self.sectionxform(section), self.optionxform(option)),
-            (None, None))
+        location = setting_location(section, option)
         if location[0]:
             extra = ' (located at %s' % location[0]
             if location[1]:
@@ -438,6 +436,16 @@ class RawConfigParser(object):
         else:
             extra = ''
         return extra
+
+    def setting_location(self, section, option):
+        """
+        Returns (filename, line_number) where the given setting was defined.
+        May return (None, None) if it's unknown.
+        """
+        location = self._key_file_positions.get(
+            (self.sectionxform(section), self.optionxform(option)),
+            (None, None))
+        return location
 
     def getint(self, section, option):
         """A convenience method which coerces the option in the
@@ -493,9 +501,7 @@ class RawConfigParser(object):
         filename and the path is not absolute.
         """
         value = self.get(section, option)
-        filename = self._key_file_positions.get(
-            (self.sectionxform(section), self.optionxform(option)),
-            (None, None))[0]
+        filename = self.setting_location(section, option)[0]
         if filename is None:
             if os.path.isabs(value):
                 return value
@@ -600,9 +606,7 @@ class RawConfigParser(object):
             ops = self._section_key_order[sec]
             selected_ops = []
             for op in ops:
-                location = self._key_file_positions.get(
-                    (self.sectionxform(sec), self.optionxform(op)),
-                    (None, None))
+                location = self.setting_location(sec, op)
                 if (sources is None
                     or location[0] in sources):
                     selected_ops.append(op)
