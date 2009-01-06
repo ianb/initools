@@ -427,7 +427,7 @@ class RawConfigParser(object):
                    self._get_location_info(section, option)))
 
     def _get_location_info(self, section, option):
-        location = setting_location(section, option)
+        location = self.setting_location(section, option)
         if location[0]:
             extra = ' (located at %s' % location[0]
             if location[1]:
