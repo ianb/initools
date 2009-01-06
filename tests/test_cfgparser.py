@@ -239,6 +239,26 @@ class BaseCase(unittest.TestCase):
             "\n"
             )
 
+    def test_write_multiline(self):
+        cf = self.fromstring(
+            "[test]\n"
+            "snippet = one line\n"
+            "  two line\n"
+            "  three line\n"
+            "snippet2 = empty\n"
+            )
+        output = StringIO.StringIO()
+        cf.write(output)
+        self.assertEqual(
+            output.getvalue(),
+            "[DEFAULT]\n\n"
+            "[test]\n"
+            "snippet = one line\n"
+            "\ttwo line\n"
+            "\tthree line\n"
+            "snippet2 = empty\n\n"
+            )
+
     def test_write_sources(self):
         cf = self.fromstring(
             "[main]\n"
@@ -461,17 +481,17 @@ class SafeConfigParserTestCase(ConfigParserTestCase):
         self.assertRaises(TypeError, cf.set, "sect", "option2", 1.0)
         self.assertRaises(TypeError, cf.set, "sect", "option2", object())
 
+del BaseCase
 
-def test_main():
-    test_support.run_unittest(
-        ConfigParserTestCase,
-        RawConfigParserTestCase,
-        SafeConfigParserTestCase
-    )
+#def test_main():
+#    test_support.run_unittest(
+#        ConfigParserTestCase,
+#        RawConfigParserTestCase,
+#        SafeConfigParserTestCase
+#    )
 
 if __name__ == "__main__":
     import unittest
     # To keep it from being tested
-    del BaseCase
     unittest.main()
     #test_main()
