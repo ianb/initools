@@ -243,7 +243,7 @@ class BaseCase(unittest.TestCase):
         cf = self.fromstring(
             "[test]\n"
             "snippet = one line\n"
-            "  two line\n"
+            "  two; line\n"
             "  three line\n"
             "snippet2 = empty\n"
             )
@@ -253,9 +253,10 @@ class BaseCase(unittest.TestCase):
             output.getvalue(),
             "[DEFAULT]\n\n"
             "[test]\n"
+            "; line\n"
             "snippet = one line\n"
-            "\ttwo line\n"
-            "\tthree line\n"
+            "\ttwo\n"
+            "\tthree line\n\n"
             "snippet2 = empty\n\n"
             )
 

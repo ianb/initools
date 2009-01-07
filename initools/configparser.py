@@ -563,7 +563,7 @@ class RawConfigParser(object):
             if (sec, op) in self._key_comments:
                 del self._key_comments[(sec, op)]
         else:
-            self._key_comments[(sec, op)] = value
+            self._key_comments[(sec, op)] = comments
         if filename is None:
             if (sec, op) in self._key_file_positions:
                 del self._key_file_positions[(sec, op)]
@@ -759,15 +759,19 @@ class _ConfigParserParser(iniparser.INIParser):
                     comment = None
                 elif semi_pos == -1:
                     line, comment = line.split('#', 1)
+                    comment_char = '#'
                 elif hash_pos == -1:
                     line, comment = line.split(';', 1)
+                    comment_char = ';'
                 elif hash_pos < semi_pos:
                     line, comment = line.split('#', 1)
+                    comment_char = '#'
                 else:
                     line, comment = line.split(';', 1)
+                    comment_char = ';'
                 if comment is not None:
                     line = line.rstrip()
-                    comment = comment.lstrip()
+                    comment = comment_char + ' ' + comment.lstrip()
                     self.add_comment(comment)
                 result.append(line)
             content = '\n'.join(result)
