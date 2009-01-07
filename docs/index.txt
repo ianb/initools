@@ -85,8 +85,8 @@ See http://wiki.python.org/moin/ConfigParserShootout
 News
 ----
 
-svn trunk
-~~~~~~~~~
+0.3
+~~~
 
 * Added ``ignore_missing_files`` configuration value on ConfigParser;
   if False (default True) then ``conf.read([filename])`` will raise an
