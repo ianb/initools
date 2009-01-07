@@ -105,3 +105,6 @@ svn trunk
 * Added method ``initools.configparser.ConfigParser.setting_location(section, option)``
   which returns the (filename, line_number) of the setting (or None, None).
 
+* Fixed a problem when writing files using inline comments, with
+  ``initools.configparser.ConfigParser`` -- after parsing the wrong
+  value would be put in as a comment, creating an invalid configuration file.
