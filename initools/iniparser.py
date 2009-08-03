@@ -151,7 +151,7 @@ class INIParser(object):
         equal_pos = line.find('=')
         if colon_pos == -1 and equal_pos == -1:
             self.error_missing_equal(line)
-            return None
+            return None, None
         if (colon_pos == -1
             or (equal_pos != -1 and equal_pos < colon_pos)):
             pos = equal_pos
