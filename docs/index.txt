@@ -91,6 +91,9 @@ svn trunk
 * Fix to allow subclasses to implement ``error_missing_equal`` to not throw
   an error (i.e. ignore this error)
 
+* The ``.write()`` method (which writes out an edited config file) was
+  not giving
+
 0.3
 ~~~
 
