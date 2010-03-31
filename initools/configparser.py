@@ -530,7 +530,7 @@ class RawConfigParser(object):
         for section in self.sections():
             result[section] = self.items(section, raw=raw, vars=vars)
         return result
-        
+
     def set(self, section, option, value, filename=None,
             line_number=None, comments=None):
         """If the given section exists, set the given option to the
@@ -615,13 +615,13 @@ class RawConfigParser(object):
                 continue
             comment = self._section_comments.get(sec)
             if comment:
-                f.write(comment+'\n')
+                f.write('#'+comment+'\n')
             f.write('[%s]\n' % section)
             for op in selected_ops:
                 option = self._pre_normalized_keys[(sec, op)]
                 comment = self._key_comments.get((sec, op))
                 if comment:
-                    f.write(comment+'\n')
+                    f.write('#'+comment+'\n')
                 f.write('%s = ' % option)
                 lines = self._values[sec][op].splitlines()
                 if not lines:
@@ -800,7 +800,7 @@ class _ConfigParserParser(iniparser.INIParser):
         if not section:
             self.parse_error('Empty section name ([])')
         self.section = section
-        
+
     def add_comment(self, comment):
         if self.last_comment is None:
             self.last_comment = comment
@@ -841,7 +841,7 @@ class _OptionWrapper(DictMixin):
         if item in self.parser.defaults():
             return self.parser.defaults()[item]
         raise KeyError(item)
-        
+
 class _SectionOptionWrapper(_OptionWrapper):
     """
     This provides the dict wrapper for dollar substitution.  Unlike
@@ -856,7 +856,7 @@ class _SectionOptionWrapper(_OptionWrapper):
             return self.parser.get(section, item, vars=self.extra_vars,
                                    _recursion=self._recursion+1)
         return _OptionWrapper.__getitem__(self, item)
-    
+
 class CanonicalFilenameSet(object):
     """
     This wrapper for a set will make sure that canonical filenames are
