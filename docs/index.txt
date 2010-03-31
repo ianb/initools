@@ -85,8 +85,8 @@ See http://wiki.python.org/moin/ConfigParserShootout
 News
 ----
 
-svn trunk
-~~~~~~~~~
+0.3.1
+~~~~~
 
 * Fix to allow subclasses to implement ``error_missing_equal`` to not throw
   an error (i.e. ignore this error)
